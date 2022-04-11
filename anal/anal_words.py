@@ -313,7 +313,7 @@ class VecDistAnal(Anal):
             1. determine the sufficiently-important cluster of vectors.
     '''
 
-    def __init__(self,dloader: WordEmbLoader,num_cls=20,samples_per_cls=25, **kwargs):
+    def __init__(self,dloader: WordEmbLoader,num_cls=50,samples_per_cls=25, **kwargs):
         super(VecDistAnal, self).__init__(**kwargs)
         self.dloader = dloader
         self.num_cls = num_cls
