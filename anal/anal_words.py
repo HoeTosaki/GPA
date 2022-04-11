@@ -203,7 +203,11 @@ class CharVecAnal(DoAnal):
                 out_org = model(**org_tok)
                 org_batch_loss = loss(out_org.logits.view(-1, 21128), org_tok['input_ids'].view(-1))
 
-                fore_tok = tokenizer(fore_mask_sen, padding='max_length', return_tensors="pt", max_length=128)
+                try:
+                    fore_tok = tokenizer(fore_mask_sen, padding='max_length', return_tensors="pt", max_length=128)
+                except IndexError:
+                    optim.zero_grad()
+                    continue
                 fore_tok = fore_tok.to(device)
                 out_fore = model(**fore_tok)
                 fore_batch_loss = loss(out_fore.logits.view(-1, 21128),
