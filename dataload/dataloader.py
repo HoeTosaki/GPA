@@ -8,11 +8,13 @@ import copy
 
 class DataLoader:
     '''
-    load data within a regular format as pandas.DataFrame, including:
-        data_mat: [n × m], n - samples, m - feat dim
-        feat_name: [m], a list of corresponding feature names
+        load data within a regular format as pandas.DataFrame, including:
+            data: [n × m], n - samples, m - feat dim
+            feat_name: [m], a list of corresponding feature names
+        4.10 (hoe) plz IGNORE the above format, just make sure the dataloader corresponding with a UoAnal
+            (if not, transform it with DoAnal).
     '''
-    def __init__(self,loader_name='anony',data_dir='../data',tmp_dir='../data/.tmp',**kwargs):
+    def __init__(self,loader_name='anony',data_dir='../data',tmp_dir='../data/.tmp'):
         self.loader_name = loader_name
         self.data_dir = data_dir
         self.tmp_dir = tmp_dir
@@ -41,6 +43,9 @@ class DataLoader:
             self.fetch(force=force)
             self.parse(force=force)
         else:
+            if self._load_checked():
+                print('[{}] load checked.'.format(self))
+                return
             if not self._fetch_checked():
                 self.fetch(force=force)
             if not self._parse_checked():
@@ -56,7 +61,8 @@ class DataLoader:
         return False
 
     def _load_checked(self):
-        return self.data_mat is None or len(self.feat_name) <= 0
+        # return self.data is None or len(self.feat_name) <= 0
+        return self.data is not None
 
     def _fetch(self):
         raise NotImplementedError
