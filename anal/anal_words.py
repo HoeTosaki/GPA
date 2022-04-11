@@ -153,7 +153,7 @@ class CharVecAnal(DoAnal):
             1. interpret characters into vectors.
     '''
 
-    def __init__(self, epochs=3,lr=1e-4,batch_sz=4,fore_mask_sz=6, **kwargs):
+    def __init__(self, epochs=1,lr=1e-4,batch_sz=4,fore_mask_sz=6, **kwargs):
         super(CharVecAnal, self).__init__(**kwargs)
         self.epochs = epochs
         self.lr = lr
@@ -176,7 +176,7 @@ class CharVecAnal(DoAnal):
 
         loss = tc.nn.CrossEntropyLoss()
         optim = tc.optim.Adam(model.parameters(), lr=self.lr)
-
+        train_log = []
         model.to(device)
         for epoch in range(self.epochs):
             model.train()
@@ -198,13 +198,16 @@ class CharVecAnal(DoAnal):
                         part_mask_sen.extend(e_part_mask_sen)
                         part_mask_pos.extend(e_part_mask_pos)
 
-                org_tok = tokenizer(org_sen, padding='max_length', return_tensors="pt", max_length=128)
+                try:
+                    org_tok = tokenizer(org_sen, padding='max_length', return_tensors="pt",truncation=True, max_length=128)
+                except IndexError:
+                    optim.zero_grad()
                 org_tok = org_tok.to(device)
                 out_org = model(**org_tok)
                 org_batch_loss = loss(out_org.logits.view(-1, 21128), org_tok['input_ids'].view(-1))
 
                 try:
-                    fore_tok = tokenizer(fore_mask_sen, padding='max_length', return_tensors="pt", max_length=128)
+                    fore_tok = tokenizer(fore_mask_sen, padding='max_length', return_tensors="pt",truncation=True, max_length=128)
                 except IndexError:
                     optim.zero_grad()
                     continue
@@ -221,6 +224,7 @@ class CharVecAnal(DoAnal):
                 print('--epoch {} | iter {}/{} | train loss:{:.6f} | time:{:.3f}'.format(epoch, idx,len(sentences)/self.batch_sz,
                                                                                     train_loss / cnt,
                                                                                     time.time() - st_time))
+                train_log.append(float(train_loss / cnt))
 
             print('--epoch {} | train loss:{:.6f} | time:{:.3f}'.format(epoch, train_loss / cnt, time.time() - st_time))
             # tc.cuda.empty_cache()
@@ -228,6 +232,7 @@ class CharVecAnal(DoAnal):
         enc_pth = self.pwd(is_tmp=True)+'.encoder'
         eml = EmbModelLoader(loader_name=self.anal_name)
         eml.register('enc_pth',enc_pth,'inner')
+        eml.register('train_log',train_log,'inner')
         eml.push()
 
         # fore_tok = tokenizer(fore_mask_sen, padding=True, return_tensors="pt")
@@ -276,7 +281,7 @@ class WordVecAnal(DoAnal):
         word_lst = [k for k, v in sorted(word_dic.items(), key=lambda x: x[1], reverse=True)]
 
         tokenizer = AutoTokenizer.from_pretrained("bert-base-chinese")
-        word_tok = tokenizer(word_lst,padding='max_length', return_tensors="pt", max_length=128)
+        word_tok = tokenizer(word_lst,padding='max_length', return_tensors="pt",truncation=True, max_length=128)
         word_emb = model.base_model.embeddings(word_tok['input_ids'])
 
         emb_lst = []
@@ -308,7 +313,7 @@ class VecDistAnal(Anal):
             1. determine the sufficiently-important cluster of vectors.
     '''
 
-    def __init__(self,dloader: WordEmbLoader,num_cls=20,samples_per_cls=5, **kwargs):
+    def __init__(self,dloader: WordEmbLoader,num_cls=20,samples_per_cls=25, **kwargs):
         super(VecDistAnal, self).__init__(**kwargs)
         self.dloader = dloader
         self.num_cls = num_cls
@@ -353,8 +358,8 @@ class VecDistAnal(Anal):
         embs_2d = tsne.fit_transform(embs_low)
         print('t-sne transform completed.')
         plt.scatter(embs_2d[:,0],embs_2d[:,1],c=pred_y,s=1.5,alpha=0.4)
-        plt.show()
         plt.savefig(self.pwd(False)+'.org_embs.svg')
+        plt.show()
 
         eig_word = []
         for cls in range(self.num_cls):
@@ -362,10 +367,12 @@ class VecDistAnal(Anal):
             idx_lst = idx[pred_y == cls].tolist()
             random.shuffle(idx_lst)
             idx_lst = idx_lst[:self.samples_per_cls]
-            eig_word.extend([id2word[int(ele)] for ele in idx_lst])
+            eig_word.append([id2word[str(ele)] for ele in idx_lst])
 
-        with open(self.pwd(True)+'.eig_word.txt') as f:
-            f.write('\n'.join(eig_word))
+        with open(self.pwd(True)+'.eig_word.txt','w',encoding='utf-8') as f:
+            for e_eig_word in eig_word:
+                cur_line = ','.join(e_eig_word)
+                f.write(cur_line+'\n')
 
         vdl = VecDistLoader(loader_name='vec-dist')
         vdl.register('embs',embs_low,'np')
@@ -443,14 +450,14 @@ if __name__ == '__main__':
     # wla = WordLabelingAnal(anal_name='word-lab',word_ratio=0.8)
     # wla.fit_transform(WordLoader(loader_name='word-sep'))
 
-    cva = CharVecAnal(anal_name='char-vec')
-    cva.fit_transform(ForeSpanLoader(loader_name='word-lab'))
+    # cva = CharVecAnal(anal_name='char-vec')
+    # cva.fit_transform(ForeSpanLoader(loader_name='word-lab'))
 
     # wva = WordVecAnal(anal_name='word-vec',word_loader=WordLoader(loader_name='word-sep'))
     # wva.fit_transform(EmbModelLoader(loader_name='char-vec'))
 
-    # vda = VecDistAnal(anal_name='word-vec',dloader=WordEmbLoader(loader_name='word-vec'))
-    # vda.print()
+    vda = VecDistAnal(anal_name='word-vec',dloader=WordEmbLoader(loader_name='word-vec'))
+    vda.print()
 
 
     print('hello anal words.')
