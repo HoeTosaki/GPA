@@ -3,8 +3,6 @@ import numpy as np
 import pandas as pd
 
 from anal import *
-import jieba as jb
-import tqdm
 import re
 from dataload.virtual_loader import *
 from ast import literal_eval
@@ -13,7 +11,6 @@ import tqdm
 from sklearn.decomposition import PCA
 from transformers import BertTokenizer, BertLMHeadModel, BertConfig,AutoTokenizer, AutoModelForMaskedLM
 import random
-import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 import time
 from util.util import *
@@ -390,23 +387,32 @@ class VecLabelingAnal(Anal):
             1. create continuous labels for each vectorized feature.
     '''
 
-    def __init__(self, dloader: WordEmbLoader, **kwargs):
+    def __init__(self, dloader: EigWordLoader, **kwargs):
         super(VecLabelingAnal, self).__init__(**kwargs)
         self.dloader = dloader
 
     def __str__(self):
         return 'VecDistAnal:' + self.anal_name
 
-    def _fit(self, dloader: VecDistLoader):
+    def fit_transform(self, dloader: VecDistLoader):
         dloader.load()
         embs = dloader.data['embs']
-        labels = dloader.data['labels']
+        # labels = dloader.data['labels']
         word2id = dloader.data['word2id']
-        id2word = dloader.data['id2word']
+        # id2word = dloader.data['id2word']
         eig_word = dloader.data['eig_word']
 
         self.dloader.load()
-        eig_word2person = self.dloader.data['word2person']
+        # eig_word2person = self.dloader.data['word2person']
+        # person_type = self.dloader.data['person_type']
+
+        eig_word2person = {}
+        person_type = ['A','B','C','D','E']
+        random.shuffle(eig_word)
+        for e_eig_word in eig_word[:20]:
+            for ee_eig_word in e_eig_word:
+                eig_word2person[ee_eig_word] = [random.randint(0,48),random.randint(0,48),random.randint(0,48),random.randint(0,48),random.randint(0,48)]
+
 
         emb_lst = []
         person_lst = []
@@ -415,14 +421,16 @@ class VecLabelingAnal(Anal):
             person_lst.append(eig_word2person[word])
 
         emb_lst = np.array(emb_lst)
-        person_lst = np.array(emb_lst)
+        person_lst = np.array(person_lst)
 
         assert emb_lst.shape[0] == person_lst.shape[0]
 
         persons = np.zeros(shape=(embs.shape[0],person_lst.shape[1]))
         for word in word2id:
             if word not in eig_word2person:
-                persons[word2id[word]] = np.array((np.sum(np.exp( - (embs[word2id[word]] - emb_lst) ** 2 / 2),axis = 1) @ person_lst).tolist())
+                dist = np.sum(np.exp(- (embs[word2id[word]] - emb_lst) ** 2 / 2), axis=1)
+                dist = dist / np.sum(dist)
+                persons[word2id[word]] = np.array((dist @ person_lst).tolist())
             else:
                 persons[word2id[word]] = np.array(eig_word2person[word])
 
@@ -440,7 +448,11 @@ class VecLabelingAnal(Anal):
         pel.register('eig_word',eig_word)
         pel.register('eig_word2per',eig_word2person)
         pel.register('persons',persons,'np')
+        pel.register('person_type', person_type)
         pel.push()
+
+
+
 
 if __name__ == '__main__':
     # wsa = WordSepAnal(anal_name='word-sep')
@@ -456,8 +468,15 @@ if __name__ == '__main__':
     # wva = WordVecAnal(anal_name='word-vec',word_loader=WordLoader(loader_name='word-sep'))
     # wva.fit_transform(EmbModelLoader(loader_name='char-vec'))
 
-    vda = VecDistAnal(anal_name='word-vec',dloader=WordEmbLoader(loader_name='word-vec'))
-    vda.print()
+    # vda = VecDistAnal(anal_name='vec-dist',dloader=WordEmbLoader(loader_name='word-vec'))
+    # vda.print()
+
+    # ewl = EigWordLoader(loader_name='eig-word')
+    # ewl.register('a',1)
+    # ewl.push()
+    #
+    vla = VecLabelingAnal(anal_name='vec-lab',dloader=EigWordLoader(loader_name='eig-word'))
+    vla.fit_transform(VecDistLoader(loader_name='vec-dist'))
 
 
     print('hello anal words.')

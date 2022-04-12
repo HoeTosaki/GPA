@@ -85,3 +85,6 @@ class EigWordLoader(VirtualLoader):
 
 class PersonEmbLoader(VirtualLoader):
     pass
+
+class UserComplLoader(VirtualLoader):
+    pass
