@@ -28,33 +28,37 @@ class UserGraphAnal(Anal):
         uid2nid = {val:idx for idx,val in enumerate(list(user_data['user_id'].values))}
         nid2uid = {idx:val for idx, val in enumerate(list(user_data['user_id'].values))}
 
+        def func(x):
+            return per_types[int(np.argmax(np.array([x[ele+'@nor'] for ele in per_types])))]
+        user_data['person_type@nor'] = user_data.apply(func,axis=1)
+
         g = dgl.DGLGraph()
         g.add_nodes(len(user_data))
-        per_ids = [per_types.index(str(val)) for val in user_data['person_type'].values]
+        per_ids = [per_types.index(str(val)) for val in user_data['person_type@nor'].values]
         g.ndata['per_ids'] = tc.LongTensor(per_ids)
 
         cs = ['coral','dodgerblue','brown','red','pink']
-        G = dgl.to_networkx(g)
 
         print('start to construct graph...')
 
         uid_lst = list(pd_data['user_id'].values)
-        interval = 1
+        interval = 3
         for idx in tqdm.tqdm(range(interval,len(uid_lst))):
             if idx < interval:
                 continue
             for idy in range(idx-interval,idx):
                 g.add_edge(uid2nid[uid_lst[idx]],uid2nid[uid_lst[idy]])
 
-        # plt.clf()
-        # nx.draw(G,node_color=[cs[int(ele)] for ele in g.ndata['per_ids']],node_size=2)
-        # plt.savefig(self.pwd(False)+'.user-per-graph.svg')
-        # plt.show()
+        G = dgl.to_networkx(g)
+        plt.clf()
+        nx.draw(G,node_color=[cs[int(ele)] for ele in g.ndata['per_ids']],node_size=2)
+        plt.savefig(self.pwd(False)+'.user-per-graph.svg')
+        plt.show()
 
         print('start to walk...')
 
         walks = []
-        walk_len = 4
+        walk_len = 64
         for nid in tqdm.tqdm(range(g.num_nodes())):
             walk = [nid]
             cur_len = 0
@@ -79,7 +83,7 @@ class UserGraphAnal(Anal):
             walks.append(walk)
 
         print('start to train emb...')
-        emb_sz = 4
+        emb_sz = 16
         model = Word2Vec(sentences=walks,size=emb_sz,window=5,min_count=0,sg=1,hs=0,negative=3,workers=8)
         model.wv.save_word2vec_format(self.pwd()+'.per.emb')
 
@@ -103,16 +107,6 @@ class UserGraphAnal(Anal):
         plt.title('不同人格特征交互距离')
         plt.savefig(self.pwd(True)+'.emb-per-dist.svg')
         plt.show()
-
-
-
-
-
-
-
-
-
-
 
 if __name__ == '__main__':
     uga = UserGraphAnal(anal_name='user-graph')

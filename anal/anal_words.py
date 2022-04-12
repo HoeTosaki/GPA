@@ -18,6 +18,7 @@ from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 from sklearn.cluster import *
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 
 
 device = tc.device('cuda:0' if tc.cuda.is_available() else 'cpu')
@@ -403,36 +404,54 @@ class VecLabelingAnal(Anal):
         eig_word = dloader.data['eig_word']
 
         self.dloader.load()
-        # eig_word2person = self.dloader.data['word2person']
-        # person_type = self.dloader.data['person_type']
+        eig_word2person = self.dloader.data['word2person']
+        person_type = self.dloader.data['person_type']
 
-        eig_word2person = {}
-        person_type = ['A','B','C','D','E']
-        random.shuffle(eig_word)
-        for e_eig_word in eig_word[:20]:
-            for ee_eig_word in e_eig_word:
-                eig_word2person[ee_eig_word] = [random.randint(0,48),random.randint(0,48),random.randint(0,48),random.randint(0,48),random.randint(0,48)]
-
+        # eig_word2person = {}
+        # person_type = ['A','B','C','D','E']
+        # random.shuffle(eig_word)
+        # for e_eig_word in eig_word[:20]:
+        #     for ee_eig_word in e_eig_word:
+        #         eig_word2person[ee_eig_word] = [random.randint(0,48),random.randint(0,48),random.randint(0,48),random.randint(0,48),random.randint(0,48)]
 
         emb_lst = []
         person_lst = []
+        del_words = []
         for word in eig_word2person:
+            if word not in word2id:
+                print('[{}] Warning: {} not in cur word dict'.format(self,word))
+                del_words.append(word)
+                continue
             emb_lst.append(embs[word2id[word]].tolist())
             person_lst.append(eig_word2person[word])
-
+        for word in del_words:
+            del eig_word2person[word]
         emb_lst = np.array(emb_lst)
         person_lst = np.array(person_lst)
+
+        ss = StandardScaler()
+        emb_lst = ss.fit_transform(emb_lst)
+        embs = ss.fit_transform(embs)
 
         assert emb_lst.shape[0] == person_lst.shape[0]
 
         persons = np.zeros(shape=(embs.shape[0],person_lst.shape[1]))
         for word in word2id:
             if word not in eig_word2person:
-                dist = np.sum(np.exp(- (embs[word2id[word]] - emb_lst) ** 2 / 2), axis=1)
-                dist = dist / np.sum(dist)
-                persons[word2id[word]] = np.array((dist @ person_lst).tolist())
+                k = 5
+                dist = np.exp(np.sum((embs[word2id[word]] - emb_lst) ** 2,axis=1)/50)
+                k_ind = np.argsort(dist)[-k:]
+                dist_k = dist[k_ind]
+                person_lst_k = person_lst[k_ind]
+                dist_k = dist_k / np.sum(dist_k)
+                persons[word2id[word]] = np.array((dist_k @ person_lst_k).tolist())
             else:
                 persons[word2id[word]] = np.array(eig_word2person[word])
+        person_col_sum = np.median(persons,axis=0)
+        for icol in range(persons.shape[1]):
+            persons[:,icol] /= person_col_sum[icol]
+        mm = MinMaxScaler()
+        persons = mm.fit_transform(persons)
 
         embs = dloader.data['embs']
         labels = dloader.data['labels']
@@ -451,7 +470,73 @@ class VecLabelingAnal(Anal):
         pel.register('person_type', person_type)
         pel.push()
 
+class VecVisualAnal(UoAnal):
+    '''
+        visualize all vec with their labels on personality continuously.
+    '''
 
+    def __init__(self,pemb_loader:PersonEmbLoader,num_cls=50, **kwargs):
+        super(VecVisualAnal, self).__init__(**kwargs)
+        self.pemb_loader = pemb_loader
+        self.num_cls = num_cls
+
+    def __str__(self):
+        return 'VecVisualAnal:' + self.anal_name
+
+    def _print(self, to_screen=True):
+        self.pemb_loader.load()
+        word2id = self.pemb_loader.data['word2id']
+        id2word = self.pemb_loader.data['id2word']
+        embs = self.pemb_loader.data['embs']
+        persons = self.pemb_loader.data['persons']
+        person_type = self.pemb_loader.data['person_type']
+        eig_word2person = self.pemb_loader.data['eig_word2per']
+
+        if np.isnan(embs).any():
+            for emb in embs:
+                emb[np.isnan(emb)] = 0
+
+        pca = PCA(n_components=64)
+
+        embs_low = pca.fit_transform(embs)
+
+        print('PCA transform completed.')
+
+        ss = StandardScaler()
+        embs_low = ss.fit_transform(embs_low)
+
+        print('Scaling transform completed.')
+
+        km = KMeans(n_clusters=self.num_cls)
+        pred_y = km.fit_predict(embs_low)
+        print('clustering completed.')
+
+        tsne = TSNE(n_components=2,learning_rate=200)
+        embs_2d = tsne.fit_transform(embs_low)
+        print('t-sne transform completed.')
+        plt.clf()
+        plt.scatter(embs_2d[:,0],embs_2d[:,1],c=pred_y,s=1.5,alpha=0.4)
+        plt.savefig(self.pwd(False)+'.cls_embs.svg')
+        plt.show()
+
+        # meta_cs = np.array(list(range(len(person_type))))
+        meta_cs = ['coral', 'dodgerblue', 'brown', 'red', 'pink']
+        cs = []
+        alphas = []
+        for person in persons:
+            max_idx = int(np.argmax(person))
+            cs.append(meta_cs[max_idx])
+            alphas.append(min(1,2*(person[max_idx]-0.5) if person[max_idx] >= 0.5 else 0))
+
+        plt.clf()
+        plt.scatter(embs_2d[:, 0], embs_2d[:, 1], c=cs, s=1.5, alpha=alphas)
+        lb_y_min,lb_y_max = min(embs_2d[:,1]),max(embs_2d[:,1])
+        lb_x_max = max(embs_2d[:,0])
+        for i in range(len(person_type)):
+            plt.scatter([lb_x_max+20],[lb_y_min + i / (len(person_type)-1)*(lb_x_max - lb_y_min)],c=meta_cs[i],s=20,alpha=1)
+        # plt.legend()
+        plt.savefig(self.pwd(False) + '.lab_embs.svg')
+        plt.show()
 
 
 if __name__ == '__main__':
@@ -474,9 +559,11 @@ if __name__ == '__main__':
     # ewl = EigWordLoader(loader_name='eig-word')
     # ewl.register('a',1)
     # ewl.push()
-    #
-    vla = VecLabelingAnal(anal_name='vec-lab',dloader=EigWordLoader(loader_name='eig-word'))
-    vla.fit_transform(VecDistLoader(loader_name='vec-dist'))
 
+    # vla = VecLabelingAnal(anal_name='vec-lab',dloader=EigWordLoader(loader_name='eig-word'))
+    # vla.fit_transform(VecDistLoader(loader_name='vec-dist'))
+
+    vva = VecVisualAnal(anal_name='vec-visual',pemb_loader=PersonEmbLoader(loader_name='vec-lab'))
+    vva.print()
 
     print('hello anal words.')

@@ -98,11 +98,11 @@ class UserComplLoader(VirtualLoader):
     pass
 
 if __name__ == '__main__':
-    ewl1 = EigWordLoader()
+    ewl1 = EigWordLoader(loader_name='eig-word')
 
     ewl1.register('person_type', ['神经质', '外向性', '开放性', '顺同性', '严谨性'])
 
-    ewl1.register('dic', {
+    ewl1.register('word2person', {
         '色图': [26, 19, 27, 16, 13],
         '白捡': [25, 28, 38, 32, 34],
         '石坑': [24, 24, 30, 24, 27],
@@ -158,4 +158,5 @@ if __name__ == '__main__':
         '死去': [25, 41, 23, 5, 30],
     })
 
+    ewl1.push()
     print(ewl1.data_dict)

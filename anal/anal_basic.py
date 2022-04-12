@@ -12,6 +12,8 @@ from ast import literal_eval
 from wordcloud import WordCloud
 plt.rcParams['font.family'] = 'SimHei'
 plt.rcParams['axes.unicode_minus'] = False
+from sklearn.preprocessing import MinMaxScaler
+
 
 class UserAnal(DoAnal):
     def __init__(self,word_loader:WordLoader,**kwargs):
@@ -31,7 +33,7 @@ class UserAnal(DoAnal):
             cnt = 0
             for xx in x:
                 if xx in word2id:
-                    cur_person += persons[word2id[xx]]/48
+                    cur_person += persons[word2id[xx]]
                     cnt += 1
             if cnt == 0:
                 cur_person = np.ones(shape=(len(person_type),))*0.5
@@ -64,6 +66,12 @@ class UserAnal(DoAnal):
         cols.append('person_type')
         user_data = pd.DataFrame(user_person,columns=cols)
 
+        for per_type in person_type:
+            vals = np.array(list(user_data[per_type].values))
+            vals /= np.median(vals)
+            mm = MinMaxScaler()
+            vals = mm.fit_transform(vals.reshape(-1,1))
+            user_data[per_type+'@nor'] = pd.Series(data=vals.reshape(-1))
         ucl = UserComplLoader(loader_name=self.anal_name)
         ucl.register('person_type',person_type)
         ucl.register('data',pd_data,'pd')
@@ -81,6 +89,15 @@ class SinFactorAnal(UoAnal):
         pd_data = self.user_compl_loader.data['data']
         self.per_types = self.user_compl_loader.data['person_type']
         user_data = self.user_compl_loader.data['user_data']
+
+        user2per = {}
+        for idx in range(len(user_data)):
+            user2per[str(user_data['user_id'][idx])] = []
+            for pertype in self.per_types:
+                user2per[str(user_data['user_id'][idx])].append((float(user_data[pertype][idx]),float(user_data[pertype+'@nor'][idx])))
+        for idx, pertype in enumerate(self.per_types):
+            pd_data[pertype] = pd_data.apply(lambda x: user2per[x['user_id']][idx][0], axis=1)
+            pd_data[pertype+'@nor'] = pd_data.apply(lambda x: user2per[x['user_id']][idx][1], axis=1)
 
         self.stop_words = list(pd_data['chat_lv'].unique())
 
@@ -104,31 +121,23 @@ class SinFactorAnal(UoAnal):
         #
         # # 玩家整体大五人格分布
         # self._user_total_per(pd_data,user_data)
-        #
+
         # # 不同人格发言热度归一化趋势
         # self._per_hot(pd_data,user_data)
-        #
+
         # # 不同人格发言时段归一化趋势
         # self._per_hot_day(pd_data,user_data)
-
-        # 整体游戏讨论词云
-        self._word_cloud_total(pd_data)
-
-        # 不同人格的词云分布
-        self._word_cloud_per(pd_data,user_data)
+        #
+        # # 整体游戏讨论词云
+        # self._word_cloud_total(pd_data)
+        #
+        # # 不同人格的词云分布
+        # self._word_cloud_per(pd_data,user_data)
 
     def _word_cloud_per(self,pd_data,user_data):
-        user2per = {}
-        for idx in range(len(user_data)):
-            user2per[str(user_data['user_id'][idx])] = str(user_data['person_type'][idx])
-
-        def __add_person_type__(x):
-            return str(user2per[x['user_id']])
-
-        pd_data['person_type'] = pd_data.apply(__add_person_type__, axis=1)
-
+        glb_personal_actived = 0.5
         for per_type in self.per_types:
-            self._gen_word_cloud(data=pd_data[pd_data['person_type']==per_type],add_name='.per-{}-wcloud'.format(per_type))
+            self._gen_word_cloud(data=pd_data[pd_data[per_type+'@nor'] > glb_personal_actived],add_name='.per-{}-wcloud'.format(per_type))
 
     def _word_cloud_total(self,pd_data):
         self._gen_word_cloud(data=pd_data,add_name='.total-wcloud')
@@ -157,44 +166,53 @@ class SinFactorAnal(UoAnal):
         wordcloud.to_file(self.pwd(False)+add_name+'.jpg')
 
     def _per_hot(self,pd_data,user_data):
-        user2per = {}
-        for idx in range(len(user_data)):
-            user2per[str(user_data['user_id'][idx])] = str(user_data['person_type'][idx])
-        def __add_person_type__(x):
-            return str(user2per[x['user_id']])
-        pd_data['person_type'] = pd_data.apply(__add_person_type__,axis=1)
+        glb_personal_actived = 0.5
         dates = list(pd_data['date'].unique())
         per_cnts = []
         for date in dates:
             data = pd_data[pd_data['date'] == date]
             cur_cnts = []
             for per_type in self.per_types:
-                cur_cnts.append(len(data[data['person_type'] == per_type]))
+                cur_cnts.append(len(data[data[per_type+'@nor'] > glb_personal_actived]))
             sum_cur_cnts = sum(cur_cnts)
             per_cnts.append([ele/sum_cur_cnts for ele in cur_cnts])
         per_cnts = np.array(per_cnts).T
         cs = ['coral','dodgerblue','brown','red','pink']
 
+        plt.clf()
         fig, ax = plt.subplots(1, 1)
         for idx in range(len(per_cnts)):
             ax.plot(dates,per_cnts[idx,:],c=cs[idx],label=self.per_types[idx])
-        plt.title('不同人格发言热度归一化趋势')
+        plt.title('不同人格发言热度按人格归一化趋势')
         plt.xlabel('日期')
         plt.ylabel('当日发言比例/条')
         plt.legend()
         plt.xticks(rotation=30)
         ax.xaxis.set_major_locator(ticker.MultipleLocator(3))
         plt.tight_layout()
-        plt.savefig(self.pwd(False) + '.per_hot.svg')
+        plt.savefig(self.pwd(False) + '.per_hot@per.svg')
         plt.show()
 
+        plt.clf()
+        fig, ax = plt.subplots(1, 1)
+        for irow in range(per_cnts.shape[0]):
+            per_cnts[irow,:] /= np.sum(per_cnts[irow,:])
+            per_cnts[irow,:][np.isnan(per_cnts[irow,:])] = 0
+        for idx in range(len(per_cnts)):
+            ax.plot(dates,per_cnts[idx,:],c=cs[idx],label=self.per_types[idx])
+        plt.title('不同人格发言热度按发言数归一化趋势')
+        plt.xlabel('日期')
+        plt.ylabel('当日发言比例/条')
+        plt.legend()
+        plt.xticks(rotation=30)
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(3))
+        plt.tight_layout()
+        plt.savefig(self.pwd(False) + '.per_hot@chat.svg')
+        plt.show()
+
+
     def _per_hot_day(self,pd_data,user_data):
-        user2per = {}
-        for idx in range(len(user_data)):
-            user2per[str(user_data['user_id'][idx])] = str(user_data['person_type'][idx])
-        def __add_person_type__(x):
-            return str(user2per[x['user_id']])
-        pd_data['person_type'] = pd_data.apply(__add_person_type__,axis=1)
+        glb_personal_actived = 0.5
         times = list(pd_data['time'].unique())
         xs = ['{}时'.format(ele) for ele in range(24)]
         time_chat_cnt = [[] for _ in range(len(xs))]
@@ -204,7 +222,7 @@ class SinFactorAnal(UoAnal):
             data = pd_data[pd_data['time'].transform(lambda x: int(str(x).split(':')[0]) == idx)]
             cur_cnts = []
             for per_type in self.per_types:
-                cur_cnts.append(len(data[data['person_type'] == per_type]))
+                cur_cnts.append(len(data[data[per_type+'@nor'] > glb_personal_actived]))
             sum_cur_cnts = sum(cur_cnts)
             per_cnts.append([ele/sum_cur_cnts if sum_cur_cnts > 0 else 0 for ele in cur_cnts])
         per_cnts = np.array(per_cnts).T
@@ -212,25 +230,44 @@ class SinFactorAnal(UoAnal):
         xs = xs[9:]
         cs = ['coral','dodgerblue','brown','red','pink']
 
+        plt.clf()
         fig, ax = plt.subplots(1, 1)
         for idx in range(len(per_cnts)):
             ax.plot(xs,per_cnts[idx,:],c=cs[idx],label=self.per_types[idx])
-        plt.title('不同人格发言热度归一化趋势')
+        plt.title('不同人格发言热度按人格归一化趋势')
         plt.xlabel('日期')
         plt.ylabel('当日发言比例/条')
         plt.legend()
         plt.xticks(rotation=30)
         ax.xaxis.set_major_locator(ticker.MultipleLocator(3))
         plt.tight_layout()
-        plt.savefig(self.pwd(False) + '.per_hot.svg')
+        plt.savefig(self.pwd(False) + '.per_hot@per.svg')
+        plt.show()
+
+        plt.clf()
+        fig, ax = plt.subplots(1, 1)
+        for irow in range(per_cnts.shape[0]):
+            per_cnts[irow,:] /= np.sum(per_cnts[irow,:])
+            per_cnts[irow,:][np.isnan(per_cnts[irow,:])] = 0
+        for idx in range(len(per_cnts)):
+            ax.plot(xs,per_cnts[idx,:],c=cs[idx],label=self.per_types[idx])
+        plt.title('不同人格发言热度按发言数归一化趋势')
+        plt.xlabel('日期')
+        plt.ylabel('当日发言比例/条')
+        plt.legend()
+        plt.xticks(rotation=30)
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(3))
+        plt.tight_layout()
+        plt.savefig(self.pwd(False) + '.per_hot@chat.svg')
         plt.show()
 
 
     def _user_total_per(self,pd_data,user_data):
+        glb_personal_actived = 0.5
         user_cnt = [0] * len(self.per_types)
 
         for idx,per_type in enumerate(self.per_types):
-            user_cnt[idx] = len(user_data[user_data['person_type'] == per_type])
+            user_cnt[idx] = len(user_data[user_data[per_type+'@nor'] >= glb_personal_actived])
 
         plt.figure(figsize=(6, 6))
         label = self.per_types
