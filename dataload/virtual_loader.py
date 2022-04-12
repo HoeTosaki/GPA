@@ -94,6 +94,9 @@ class PersonEmbLoader(VirtualLoader):
     pass
 
 
+class UserComplLoader(VirtualLoader):
+    pass
+
 if __name__ == '__main__':
     ewl1 = EigWordLoader()
 
