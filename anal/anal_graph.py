@@ -48,7 +48,7 @@ class UserGraphAnal(Anal):
                 continue
             for idy in range(idx-interval,idx):
                 g.add_edge(uid2nid[uid_lst[idx]],uid2nid[uid_lst[idy]])
-
+        print('edge:{},node:{}'.format(g.num_edges(),g.num_nodes()))
         G = dgl.to_networkx(g)
         plt.clf()
         nx.draw(G,node_color=[cs[int(ele)] for ele in g.ndata['per_ids']],node_size=2)

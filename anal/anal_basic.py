@@ -127,6 +127,9 @@ class SinFactorAnal(UoAnal):
 
         # # 不同人格发言时段归一化趋势
         # self._per_hot_day(pd_data,user_data)
+
+        # 不同人格发言周期归一化趋势
+        self._per_hot_interval(pd_data,user_data)
         #
         # # 整体游戏讨论词云
         # self._word_cloud_total(pd_data)
@@ -241,7 +244,7 @@ class SinFactorAnal(UoAnal):
         plt.xticks(rotation=30)
         ax.xaxis.set_major_locator(ticker.MultipleLocator(3))
         plt.tight_layout()
-        plt.savefig(self.pwd(False) + '.per_hot@per.svg')
+        plt.savefig(self.pwd(False) + '.per_hot_day@per.svg')
         plt.show()
 
         plt.clf()
@@ -258,7 +261,60 @@ class SinFactorAnal(UoAnal):
         plt.xticks(rotation=30)
         ax.xaxis.set_major_locator(ticker.MultipleLocator(3))
         plt.tight_layout()
-        plt.savefig(self.pwd(False) + '.per_hot@chat.svg')
+        plt.savefig(self.pwd(False) + '.per_hot_day@chat.svg')
+        plt.show()
+
+    def _per_hot_interval(self,pd_data,user_data):
+        glb_personal_actived = 0.5
+        dates = list(pd_data['date'].unique())
+        xs = ['周六', '周日', '周一', '周二', '周三', '周四', '周五']
+        date_chat_cnt = [[] for _ in range(len(xs))]
+        for idx, date in enumerate(dates):
+            cur_cnts = []
+            data = pd_data[pd_data['date'] == date]
+            for per_type in self.per_types:
+                cur_cnts.append(len(data[data[per_type+'@nor'] > glb_personal_actived]))
+            lst = date_chat_cnt[idx % len(xs)]
+            if len(lst) == 0:
+                lst.extend([0]*len(self.per_types))
+            for idy in range(len(lst)):
+                lst[idy] += cur_cnts[idy]
+        per_cnts = np.array(date_chat_cnt,dtype='float32').T
+        cs = ['coral','dodgerblue','brown','red','pink']
+
+        for icol in range(per_cnts.shape[1]):
+            # print(np.sum(per_cnts[:,icol]))
+            per_cnts[:,icol] /= np.sum(per_cnts[:,icol])
+            per_cnts[:,icol][np.isnan(per_cnts[:,icol])] = 0
+        plt.clf()
+        fig, ax = plt.subplots(1, 1)
+        for idx in range(len(per_cnts)):
+            ax.plot(xs,per_cnts[idx,:],c=cs[idx],label=self.per_types[idx])
+        plt.title('不同人格发言周期性按人格归一化趋势')
+        plt.xlabel('周日期')
+        plt.ylabel('当日发言比例/条')
+        plt.legend()
+        plt.xticks(rotation=0)
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+        plt.tight_layout()
+        plt.savefig(self.pwd(False) + '.per_hot_interval@per.svg')
+        plt.show()
+
+        plt.clf()
+        fig, ax = plt.subplots(1, 1)
+        for irow in range(per_cnts.shape[0]):
+            per_cnts[irow,:] /= np.sum(per_cnts[irow,:])
+            per_cnts[irow,:][np.isnan(per_cnts[irow,:])] = 0
+        for idx in range(len(per_cnts)):
+            ax.plot(xs,per_cnts[idx,:],c=cs[idx],label=self.per_types[idx])
+        plt.title('不同人格发言热度按发言数归一化趋势')
+        plt.xlabel('周日期')
+        plt.ylabel('当日发言比例/条')
+        plt.legend()
+        plt.xticks(rotation=0)
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+        plt.tight_layout()
+        plt.savefig(self.pwd(False) + '.per_hot_interval@chat.svg')
         plt.show()
 
 
@@ -444,6 +500,20 @@ class SinFactorAnal(UoAnal):
         plt.savefig(self.pwd(False) + '.game_hot_day_pic.svg')
         plt.show()
 
+class StatAnal(UoAnal):
+    def __init__(self,user_comp_loader:UserComplLoader,word_loader:WordLoader,**kwargs):
+        super(StatAnal, self).__init__(**kwargs)
+        self.user_compl_loader = user_comp_loader
+        self.word_loader = word_loader
+
+    def _print(self, to_screen):
+        self.user_compl_loader.load()
+        self.word_loader.load()
+        pd_data = self.user_compl_loader.data['data']
+        user_data = self.user_compl_loader.data['user_data']
+
+        print('chat len:{}'.format(len(pd_data)))
+        print('user len:{}'.format(len(user_data)))
 
 if __name__ == '__main__':
     print('hello anal basic.')
@@ -452,5 +522,9 @@ if __name__ == '__main__':
 
     sfa = SinFactorAnal(anal_name='sin-factor',user_compl_loader=UserComplLoader(loader_name='user-compl'))
     sfa.print()
+
+    # sa = StatAnal(anal_name='stat', user_comp_loader=UserComplLoader(loader_name='user-compl'),
+    #               word_loader=WordLoader(loader_name='word-sep'))
+    # sa.print()
 
     # print(random.randint(0,48))

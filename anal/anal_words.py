@@ -563,7 +563,13 @@ if __name__ == '__main__':
     # vla = VecLabelingAnal(anal_name='vec-lab',dloader=EigWordLoader(loader_name='eig-word'))
     # vla.fit_transform(VecDistLoader(loader_name='vec-dist'))
 
-    vva = VecVisualAnal(anal_name='vec-visual',pemb_loader=PersonEmbLoader(loader_name='vec-lab'))
-    vva.print()
+    # vva = VecVisualAnal(anal_name='vec-visual',pemb_loader=PersonEmbLoader(loader_name='vec-lab'))
+    # vva.print()
+
+    pe = PersonEmbLoader(loader_name='vec-lab')
+    pe.load()
+    word2id = pe.data['word2id']
+    eig_word2person = pe.data['eig_word2per']
+    print('word:{},eig_word:{}'.format(len(word2id.keys()),len(eig_word2person.keys())))
 
     print('hello anal words.')
